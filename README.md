@@ -330,6 +330,55 @@ client.soroban.invoke(params, (xdr) =>
 )
 ```
 
+#### Simulation diagnostics
+
+A simulation response carries resource and fee information you can show to a
+caller before they sign. `simulateTransaction()` returns it on
+`SimulateTransactionResult`:
+
+- `resourceUsage` — CPU `instructions`, `readBytes` / `writeBytes`, and
+  `readLedgerEntries` / `writeLedgerEntries` (plus a `footprint` summary).
+- `feeBreakdown` — `minResourceFee`, and `refundableFee` / `nonRefundableFee` /
+  `total` when the RPC reports them.
+
+The shape varies with the RPC response, so `summarizeSimulationDiagnostics()`
+consolidates both into one stable, serializable object with an explicit
+`completeness` grade (`"complete"` | `"partial"` | `"absent"`) — one value to
+inspect, log, or render before signing.
+
+```ts
+import {
+  simulateTransaction,
+  summarizeSimulationDiagnostics,
+  SIMULATION_DIAGNOSTIC_FIELDS,
+} from "sorokit-core";
+
+const result = await simulateTransaction(rpcUrl, networkPassphrase, transactionXdr);
+if (result.status === "ok") {
+  const diag = summarizeSimulationDiagnostics(result.data);
+
+  // diag.completeness: "complete" | "partial" | "absent"
+  console.log(diag.resources.instructions);   // e.g. "50000"
+  console.log(diag.fees.minResourceFee);      // e.g. "1200"
+  console.log(diag.missingFields);             // fields the RPC omitted
+  console.log(diag.presentFields);             // fields that have a value
+}
+
+// The supported diagnostic field keys, in stable order:
+// SIMULATION_DIAGNOSTIC_FIELDS === [
+//   "instructions", "readBytes", "writeBytes",
+//   "readLedgerEntries", "writeLedgerEntries",
+//   "minResourceFee", "refundableFee", "nonRefundableFee", "total"
+// ]
+```
+
+`completeness` is `"complete"` when all expected fields are present, `"partial"`
+when the simulation succeeded but the RPC omitted expected resource fields
+(listed in `missingFields`), and `"absent"` when the simulation failed or no
+diagnostic fields were surfaced. The summary is pure and never mutates the
+input result, and contains only plain values, so it is safe to
+`JSON.stringify`.
+
 #### Contract deployment
 
 `buildContractDeploy` validates its configuration before any network call, so a
